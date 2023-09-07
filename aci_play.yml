@@ -1,1 +1,56 @@
+---
+- name: ENSURE APPLICATION CONFIGURATION EXISTS
+  hosts: apic
+  connection: local
+  gather_facts: False
+  vars_files:
+    - aci.var
 
+  tasks:
+    - name: Creation Tenant a partir d'un ficher variable 
+      aci_tenant:
+        host: "{{ ansible_host }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        state: "present"
+        use_ssl: true
+        validate_certs: False
+        tenant: "{{ tenant }}"
+        description: "Created With Ansible"
+
+    - name: ENSURE TENANT VRF EXISTS
+      aci_vrf:
+        host: "{{ ansible_host }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        state: "present"
+        use_ssl: true
+        validate_certs: False
+        tenant: "{{ tenant }}"
+        vrf: "{{ vrf }}"
+        description: "VRF Created Using Ansible"
+
+    - name: Add a new VLAN pool
+      cisco.aci.aci_vlan_pool:
+        host: "{{ ansible_host }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        state: "present"
+        use_ssl: true
+        validate_certs: False
+        pool: production
+        pool_allocation_mode: static
+        description: Production VLANs
+    
+    - name: Add a new VLAN encap block
+      cisco.aci.aci_vlan_pool_encap_block:
+        host: "{{ ansible_host }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        state: "present"
+        use_ssl: true
+        validate_certs: False
+        pool: production
+        pool_allocation_mode: static
+        block_start: 20
+        block_end: 20

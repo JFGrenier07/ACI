@@ -7,7 +7,7 @@
 
   tasks:
     - name: Creation Tenant a partir d'un ficher variable 
-      cisco.aci.aci_tenant:
+      aci_tenant:
         host: 192.168.0.200
         username: admin
         password: cisco1234

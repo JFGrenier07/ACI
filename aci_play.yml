@@ -6,7 +6,7 @@
   vars_files:
     - aci.var
 
-
+  tasks:
     - name: ENSURE TENANT VRF EXISTS
       aci_vrf:
         host: "{{ ansible_host }}"

@@ -6,17 +6,6 @@
   vars_files:
     - aci.var
 
-  tasks:
-    - name: Creation Tenant a partir d'un ficher variable 
-      cisco.aci.aci_tenant:
-        host: "{{ ansible_host }}"
-        username: "{{ username }}"
-        password: "{{ password }}"
-        state: "present"
-        use_ssl: true
-        validate_certs: False
-        tenant: "{{ tenant }}"
-        description: "Created With Ansible"
 
     - name: ENSURE TENANT VRF EXISTS
       aci_vrf:

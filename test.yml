@@ -6,18 +6,6 @@
   
   
   tasks:
-    - name: ENSURE TENANT VRF EXISTS
-      aci_vrf:
-        host: "{{ ansible_host }}"
-        username: "{{ username }}"
-        password: "{{ password }}"
-        state: "present"
-        use_ssl: true
-        validate_certs: False
-        tenant: "{{ tenant }}"
-        vrf: "{{ vrf }}"
-        description: "VRF Created Using Ansible"
-
     - name: Add a new VLAN pool
       cisco.aci.aci_vlan_pool:
         host: "{{ ansible_host }}"

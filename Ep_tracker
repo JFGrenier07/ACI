@@ -7,6 +7,12 @@ SANDBOX_IP = "10.10.20.14"
 HOMELAB_IP = "192.168.0.200"
 ALL_IPS = [SANDBOX_IP, HOMELAB_IP]
 
+# Dictionnaire pour associer les IP aux noms des environnements
+ENVIRONMENT_NAMES = {
+    SANDBOX_IP: "Sandbox",
+    HOMELAB_IP: "Home Lab"
+}
+
 def getToken(host, username, password):
     url = f"https://{host}/api/aaaLogin.json"
     payload = json.dumps({"aaaUser": {"attributes": {"name": username, "pwd": password}}})
@@ -77,7 +83,8 @@ def track_endpoints():
     search_value = get_search_criteria(search_type)
 
     for host in environments:
-        print(f"\nTracking in environment: {host}")
+        environment_name = ENVIRONMENT_NAMES.get(host, "Unknown Environment")
+        print(f"\nTracking in environment: {environment_name} ({host})")
         token = getToken(host, username, password)  # Get the token
         headers = {'Cookie': f"APIC-cookie={token}"}
         payload = {}

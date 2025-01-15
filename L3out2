@@ -1,0 +1,193 @@
+import requests
+import json
+import paramiko
+import time
+import re
+from getpass import getpass
+
+requests.packages.urllib3.disable_warnings()
+
+ENVIRONMENTS = {
+    "1": {"name": "Sandbox", "ip": "10.10.20.14"},
+    "2": {"name": "Home Lab", "ip": "192.168.0.200"},
+}
+
+class ACIClient:
+    def __init__(self, host, username, password):
+        self.host = host
+        self.token = self._get_token(username, password)
+        self.headers = {'Cookie': f'APIC-Cookie={self.token}'}
+
+    def _get_token(self, username, password):
+        url = f"https://{self.host}/api/aaaLogin.json"
+        payload = {"aaaUser": {"attributes": {"name": username, "pwd": password}}}
+        response = requests.post(url, json=payload, verify=False)
+        return response.json()['imdata'][0]['aaaLogin']['attributes']['token']
+
+    def get_data(self, url):
+        response = requests.get(
+            f"https://{self.host}{url}",
+            headers=self.headers,
+            verify=False
+        )
+        return response.json().get('imdata', [])
+
+def get_node_id_from_path(path):
+    """Extrait l'ID du node depuis le chemin"""
+    match = re.search(r'node-(\d+)', path)
+    if match:
+        return match.group(1)
+    return None
+
+def construct_router_ip(fabric_ip, node_id):
+    """Construit l'IP du routeur en utilisant les derniers chiffres du node ID"""
+    if not node_id:
+        return None
+    
+    # Prend les deux derniers chiffres du node ID
+    node_last_digits = node_id[-2:]
+    
+    # Divise l'IP de la fabric
+    ip_parts = fabric_ip.split('.')
+    
+    # Remplace le dernier octet par les deux derniers chiffres du node ID
+    ip_parts[-1] = node_last_digits
+    
+    # Reconstruit l'IP
+    return '.'.join(ip_parts[:-1] + [node_last_digits])
+
+def ssh_connect(ip, username, password):
+    print(f"\nConnecting to router at {ip}...")
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(ip, username=username, password=password, look_for_keys=False)
+        print("Connected successfully!")
+        return ssh
+    except Exception as e:
+        print(f"Failed to connect to {ip}: {str(e)}")
+        return None
+
+def execute_commands(ssh, commands):
+    if not ssh:
+        return
+    
+    try:
+        for command in commands:
+            print(f"\nExecuting: {command}")
+            stdin, stdout, stderr = ssh.exec_command(command)
+            time.sleep(1)
+            output = stdout.read().decode()
+            print(output)
+    except Exception as e:
+        print(f"Error executing commands: {str(e)}")
+
+[... reste des fonctions existantes ...]
+
+def find_node_paths(data, tenant, l3out, node_profile):
+    """Trouve les chemins des nodes dans la configuration"""
+    node_paths = []
+    
+    for item in data:
+        if 'fvTenant' in item and item['fvTenant']['attributes']['name'] == tenant:
+            for child in item['fvTenant'].get('children', []):
+                if 'l3extOut' in child and child['l3extOut']['attributes']['name'] == l3out:
+                    for node_prof in child['l3extOut'].get('children', []):
+                        if 'l3extLNodeP' in node_prof and node_prof['l3extLNodeP']['attributes']['name'] == node_profile:
+                            for node in node_prof['l3extLNodeP'].get('children', []):
+                                if 'l3extRsNodeL3OutAtt' in node:
+                                    node_paths.append(node['l3extRsNodeL3OutAtt']['attributes']['tDn'])
+    
+    return node_paths
+
+def main():
+    try:
+        print("\nSelect Environment:")
+        for key, env in ENVIRONMENTS.items():
+            print(f"{key}- {env['name']} ({env['ip']})")
+        
+        env_choice = input("Enter your choice: ").strip()
+        if env_choice not in ENVIRONMENTS:
+            raise ValueError("Invalid environment selection")
+
+        host = ENVIRONMENTS[env_choice]['ip']
+        username = input("Enter username: ")
+        password = input("Enter password: ")
+
+        aci = ACIClient(host, username, password)
+
+        # Get tenants and select one
+        tenants = [t['fvTenant']['attributes']['name'] 
+                  for t in aci.get_data("/api/node/class/fvTenant.json")]
+        tenant = select_item(tenants, "tenant")
+
+        # Get all tenant data with complete tree
+        tenant_data = aci.get_data(
+            f"/api/node/mo/uni/tn-{tenant}.json?query-target=subtree&rsp-subtree=full"
+        )
+
+        # Extract and select L3Out
+        l3outs = extract_aci_objects(tenant_data, 'l3extOut')
+        l3out = select_item(l3outs, "L3Out")
+
+        # Extract and select Node Profile
+        node_path = f"/out-{l3out}/"
+        node_profiles = extract_aci_objects(tenant_data, 'l3extLNodeP', node_path)
+        node_profile = select_item(node_profiles, "Node Profile")
+
+        # Trouver les node paths avant de continuer
+        node_paths = find_node_paths(tenant_data, tenant, l3out, node_profile)
+        if node_paths:
+            node_id = get_node_id_from_path(node_paths[0])
+            router_ip = construct_router_ip(host, node_id)
+        else:
+            print("No node paths found")
+            return
+
+        # Extract and select Interface Profile
+        if_path = f"{node_path}lnodep-{node_profile}/"
+        if_profiles = extract_aci_objects(tenant_data, 'l3extLIfP', if_path)
+        if_profile = select_item(if_profiles, "Interface Profile")
+
+        # Get interface and BGP details
+        interfaces, bgp_peers = find_interfaces_and_bgp(tenant_data, tenant, l3out, node_profile, if_profile)
+
+        # Afficher les détails de l'interface
+        print("\nInterface Details:")
+        for idx, interface in enumerate(interfaces, 1):
+            print_detail(idx, interface, "Interface Detail")
+
+        # Afficher et sélectionner un BGP peer
+        if bgp_peers:
+            print("\nBGP Peer Connectivity Profiles:")
+            for idx, peer in enumerate(bgp_peers, 1):
+                print_detail(idx, peer, "BGP Peer Connectivity Profile")
+
+            peer_addresses = [peer['Neighbor'] for peer in bgp_peers]
+            print("\n" + "\n".join(f"{i}- {addr}" for i, addr in enumerate(peer_addresses, 1)))
+            selected_peer = select_item(peer_addresses, "BGP Peer Connectivity Profile")
+            
+            # Établir la connexion SSH avec l'IP construite
+            if router_ip:
+                print(f"Using router IP: {router_ip}")
+                ssh = ssh_connect(router_ip, "admin", "cisco")  # ou utilisez des variables pour les credentials
+                if ssh:
+                    commands = [
+                        "show ip bgp summary",
+                        f"show ip bgp neighbors {selected_peer.split('/')[0]}",
+                        "show ip route bgp"
+                    ]
+                    execute_commands(ssh, commands)
+                    ssh.close()
+            else:
+                print("Could not determine router IP address")
+        else:
+            print("\nNo BGP peers found.")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()

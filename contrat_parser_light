@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-ACI Contract Visualizer - API REST Native (Version Optimisée et Améliorée)
+ACI Contract Visualizer - Version Finale Optimisée
 
-Ce script permet de visualiser et analyser les contrats ACI (Application Centric Infrastructure)
-en se connectant directement aux contrôleurs APIC via l'API REST native.
-
-Le script offre deux modes principaux :
+Script pour visualiser et analyser les contrats ACI via l'API REST native.
+Offre deux modes :
 1. Génération de rapports complets par fabric
 2. Consultation interactive des contrats par tenant
 
 Author: JFG
-Version: 2.1 (Optimisée et Améliorée)
+Version: 2.2 (Finale Optimisée)
 Compatible: Python 3.6+
 Dependencies: requests, urllib3
 """
@@ -35,10 +33,10 @@ FABRICS = [
 EXCLUDED_TENANTS = {"mgmt", "infra", "common"}
 REQUEST_TIMEOUT = 30
 
-# Configuration d'affichage améliorée
-REPORT_WIDTH = 140  # Largeur totale du rapport (augmentée)
-PROVIDER_COLUMN_WIDTH = 65  # Largeur colonne provider (augmentée)
-CONSUMER_COLUMN_WIDTH = 65  # Largeur colonne consumer (augmentée)
+# Configuration d'affichage
+REPORT_WIDTH = 140
+PROVIDER_COLUMN_WIDTH = 65
+CONSUMER_COLUMN_WIDTH = 65
 
 
 class ACISession:
@@ -242,43 +240,22 @@ class ACIAnalyzer:
             
             subnets.append({
                 "ip": subnet_attrs["ip"],
-                "description": subnet_attrs.get("descr", ""),
+                "description": subnet_attrs.get("name", ""),  # Utiliser 'name' pour les external EPG
                 "type": subnet_type
             })
         
         return subnets
-    
-    def get_epg_vrf(self, epg_dn: str) -> str:
-        """Récupère le VRF associé à un EPG."""
-        if "/out-" in epg_dn:
-            # EPG externe via L3Out
-            l3out_dn = epg_dn.split("/instP-")[0]
-            data = self.session.get(f"/node/mo/{l3out_dn}.json?query-target=children&target-subtree-class=l3extRsEctx")
-            if data and data.get("imdata"):
-                vrf_dn = data["imdata"][0]["l3extRsEctx"]["attributes"]["tDn"]
-                return vrf_dn.split("/")[-1].replace("ctx-", "")
-        else:
-            # EPG interne via Bridge Domain
-            data = self.session.get(f"/node/mo/{epg_dn}.json?query-target=children&target-subtree-class=fvRsBd")
-            if data and data.get("imdata"):
-                bd_dn = data["imdata"][0]["fvRsBd"]["attributes"]["tDn"]
-                bd_data = self.session.get(f"/node/mo/{bd_dn}.json?query-target=children&target-subtree-class=fvRsCtx")
-                if bd_data and bd_data.get("imdata"):
-                    vrf_dn = bd_data["imdata"][0]["fvRsCtx"]["attributes"]["tDn"]
-                    return vrf_dn.split("/")[-1].replace("ctx-", "")
-        
-        return "Unknown"
 
 
 class ReportGenerator:
-    """Générateur de rapports ACI optimisé avec affichage élargi."""
+    """Générateur de rapports ACI optimisé."""
     
     def __init__(self, analyzer: ACIAnalyzer, fabric_name: str):
         self.analyzer = analyzer
         self.fabric_name = fabric_name
     
     def generate_complete_report(self):
-        """Génère un rapport complet optimisé avec format élargi."""
+        """Génère un rapport complet optimisé."""
         filename = f"rapport_complet_{self.fabric_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         
         print("🔍 Collecte des données en cours...")
@@ -303,20 +280,20 @@ class ReportGenerator:
         print(f"📊 Total de {stats['contracts']} contrats analysés.")
     
     def _write_header(self, f):
-        """Écrit l'en-tête du rapport avec format élargi."""
+        """Écrit l'en-tête du rapport."""
         f.write("=" * REPORT_WIDTH + "\n")
         f.write(f"RAPPORT ACI CONTRACT VISUALIZER - FABRIC: {self.fabric_name.upper()}\n")
         f.write(f"Généré le: {datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}\n")
         f.write("=" * REPORT_WIDTH + "\n\n")
     
     def _write_tenant_section(self, f, tenant: Dict, contracts: List[Dict], stats: Dict):
-        """Écrit la section d'un tenant dans le rapport avec format élargi."""
+        """Écrit la section d'un tenant dans le rapport."""
         # En-tête Tenant avec VRFs alignés avec la colonne CONSUMER
         vrf_list = ", ".join([vrf['name'] for vrf in tenant['vrfs']]) if tenant['vrfs'] else "Aucun VRF"
         tenant_part = f"TENANT: {tenant['name']}"
         vrf_part = f"VRFs: {vrf_list}"
         
-        # Calculer l'espacement pour aligner VRFs avec CONSUMER (PROVIDER_COLUMN_WIDTH + 1 espace + "VRFs: ")
+        # Calculer l'espacement pour aligner VRFs avec CONSUMER
         vrf_position = PROVIDER_COLUMN_WIDTH + 1
         spacing = vrf_position - len(tenant_part)
         if spacing < 1:
@@ -337,10 +314,10 @@ class ReportGenerator:
             self._write_contract_details(f, contract, providers, consumers)
     
     def _write_contract_details(self, f, contract: Dict, providers: List[Dict], consumers: List[Dict]):
-        """Écrit les détails d'un contrat avec format élargi et colonnes bien espacées."""
+        """Écrit les détails d'un contrat avec format optimisé."""
         f.write(f"CONTRACT: {contract['name']}\n")
         
-        # En-tête des colonnes avec espacement amélioré
+        # En-tête des colonnes
         provider_header = f"{'PROVIDERS':<{PROVIDER_COLUMN_WIDTH}}"
         consumer_header = f"CONSUMERS"
         f.write(f"  {provider_header} {consumer_header}\n")
@@ -352,7 +329,7 @@ class ReportGenerator:
         provider_lines = self._build_epg_lines(providers)
         consumer_lines = self._build_epg_lines(consumers)
         
-        # Afficher les colonnes côte à côte avec espacement amélioré
+        # Afficher les colonnes côte à côte
         max_lines = max(len(provider_lines), len(consumer_lines))
         
         for i in range(max_lines):
@@ -364,7 +341,7 @@ class ReportGenerator:
         f.write("\n")
     
     def _build_epg_lines(self, epgs: List[Dict]) -> List[str]:
-        """Construit les lignes pour afficher les EPGs sans VRF."""
+        """Construit les lignes pour afficher les EPGs avec troncature intelligente."""
         lines = []
         
         for epg_idx, epg in enumerate(epgs):
@@ -373,11 +350,33 @@ class ReportGenerator:
             
             if epg["subnets"]:
                 for subnet_idx, subnet in enumerate(epg["subnets"]):
-                    desc = f" - {subnet['description']}" if subnet['description'] else ""
-                    type_suffix = f" ({subnet['type']})" if subnet['type'] in ['ext', 'exp'] else ""
+                    if epg["type"] == "external":
+                        type_suffix = f" ({subnet['type']})"
+                        if subnet['description']:
+                            # Calculer l'espace disponible pour external EPG
+                            available_space = PROVIDER_COLUMN_WIDTH - 6 - len(subnet['ip']) - len(type_suffix) - 2
+                            if len(subnet['description']) > available_space:
+                                desc_part = f" {subnet['description'][:available_space-3]}..."
+                            else:
+                                desc_part = f" {subnet['description']}"
+                        else:
+                            desc_part = ""
+                        subnet_display = f"{subnet['ip']}{type_suffix}{desc_part}"
+                    else:
+                        # Pour les EPG internes
+                        if subnet['description']:
+                            # Calculer l'espace disponible pour EPG interne
+                            available_space = PROVIDER_COLUMN_WIDTH - 6 - len(subnet['ip']) - 2
+                            if len(subnet['description']) > available_space:
+                                desc_part = f" {subnet['description'][:available_space-3]}..."
+                            else:
+                                desc_part = f" {subnet['description']}"
+                        else:
+                            desc_part = ""
+                        subnet_display = f"{subnet['ip']}{desc_part}"
                     
                     prefix = "  └─" if subnet_idx == len(epg["subnets"]) - 1 else "  ├─"
-                    lines.append(f"{prefix} {subnet['ip']}{type_suffix}{desc}")
+                    lines.append(f"{prefix} {subnet_display}")
             else:
                 lines.append("  └─ Aucun subnet")
             
@@ -388,10 +387,9 @@ class ReportGenerator:
         return lines
     
     def _format_column_content(self, lines: List[str], index: int, width: int) -> str:
-        """Formate le contenu d'une colonne avec la largeur spécifiée (sans troncature agressive)."""
+        """Formate le contenu d'une colonne avec la largeur spécifiée."""
         if index < len(lines):
             content = lines[index]
-            # Troncature plus généreuse pour éviter de couper les noms importants
             if len(content) > width:
                 content = content[:width-3] + "..."
             return f"{content:<{width}}"
@@ -399,7 +397,7 @@ class ReportGenerator:
             return " " * width
     
     def _write_summary(self, f, tenants: List[Dict], stats: Dict):
-        """Écrit le résumé final du rapport avec format élargi."""
+        """Écrit le résumé final du rapport."""
         f.write("━" * REPORT_WIDTH + "\n\n")
         f.write("═" * REPORT_WIDTH + "\n")
         f.write("RÉSUMÉ FINAL\n")
@@ -413,7 +411,7 @@ class ReportGenerator:
 
 
 class InteractiveMode:
-    """Mode consultation interactive sans affichage VRF."""
+    """Mode consultation interactive."""
     
     def __init__(self, analyzer: ACIAnalyzer):
         self.analyzer = analyzer
@@ -481,7 +479,7 @@ class InteractiveMode:
             print("❌ Choix invalide.")
     
     def _display_contract(self, contract: Dict, tenant_name: str):
-        """Affiche les détails d'un contrat SANS VRF dans le mode interactif."""
+        """Affiche les détails d'un contrat."""
         print(f"\nTenant: {tenant_name}  |  Contrat: {contract['name']}\n")
         
         providers, consumers = self.analyzer.get_contract_relationships(contract['dn'])
@@ -496,15 +494,34 @@ class InteractiveMode:
             print("❌ Aucun EPG provider/consumer lié.")
     
     def _display_epgs(self, epgs: List[Dict], prefix: str):
-        """Affiche les EPGs SANS VRF (mode interactif)."""
+        """Affiche les EPGs avec troncature pour le mode interactif."""
         for epg in epgs:
             epg_type = "Ext-EPG" if epg["type"] == "external" else "EPG"
-            # Suppression de l'affichage du VRF
             print(f"{prefix} {epg_type}-{epg['name']}")
             for subnet in epg["subnets"]:
-                desc = f" ({subnet['description']})" if subnet['description'] else ""
-                type_suffix = f" ({subnet['type']})" if subnet['type'] in ['ext', 'exp'] else ""
-                print(f"    ├── {subnet['ip']}{desc}{type_suffix}")
+                if epg["type"] == "external":
+                    type_suffix = f" ({subnet['type']})"
+                    if subnet['description']:
+                        # Limiter à 50 caractères pour le mode interactif
+                        if len(subnet['description']) > 50:
+                            desc_part = f" {subnet['description'][:47]}..."
+                        else:
+                            desc_part = f" {subnet['description']}"
+                    else:
+                        desc_part = ""
+                    subnet_display = f"{subnet['ip']}{type_suffix}{desc_part}"
+                else:
+                    if subnet['description']:
+                        # Limiter à 60 caractères pour les EPG internes
+                        if len(subnet['description']) > 60:
+                            desc_part = f" {subnet['description'][:57]}..."
+                        else:
+                            desc_part = f" {subnet['description']}"
+                    else:
+                        desc_part = ""
+                    subnet_display = f"{subnet['ip']}{desc_part}"
+                
+                print(f"    ├── {subnet_display}")
     
     def _handle_no_contracts(self, tenant_name: str) -> int:
         """Gère le cas sans contrats."""
@@ -550,8 +567,8 @@ def choose_fabric() -> Dict:
 
 
 def main():
-    """Fonction principale optimisée."""
-    print("🚀 ACI Contract Visualizer (Version Optimisée et Améliorée)")
+    """Fonction principale."""
+    print("🚀 ACI Contract Visualizer (Version Finale Optimisée)")
     
     while True:
         print("\n=== Menu Principal ===")
